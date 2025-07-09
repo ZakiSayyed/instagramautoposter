@@ -1,0 +1,11 @@
+streamlit
+APScheduler
+openai
+uiautomator2
+python-dotenv
+pandas
+requests
+pillow
+pillow-heif
+plotly
+supabase

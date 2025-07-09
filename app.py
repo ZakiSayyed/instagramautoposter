@@ -17,6 +17,7 @@ from streamlit_calendar import calendar
 import cloudinary
 import cloudinary.uploader
 
+
 register_heif_opener()
 
 # Use secrets from Streamlit Cloud

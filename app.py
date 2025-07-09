@@ -854,11 +854,13 @@ else:
     # ...existing code...
 
     elif menu == "Configuration":
-        DEFAULT_CONFIG_KEYS = [
-        "ACCESS_TOKEN", "IG_USER_ID"
-    ]
-        st.title("🔧 Configuration")
-        st.write("Configure your Instagram API settings here.")
+        st.warning("This feature is under development. Please check back later.")
+
+    #     DEFAULT_CONFIG_KEYS = [
+    #     "ACCESS_TOKEN", "IG_USER_ID"
+    # ]
+    #     st.title("🔧 Configuration")
+    #     st.write("Configure your Instagram API settings here.")
 
         # for key in DEFAULT_CONFIG_KEYS:
         #     config[key] = st.text_input(

@@ -10,3 +10,4 @@ pillow-heif
 plotly
 supabase
 streamlit-calendar
+cloudinary

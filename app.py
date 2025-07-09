@@ -13,7 +13,7 @@ from pillow_heif import register_heif_opener
 from dateutil import parser
 import pytz
 import re
-
+from streamlit_calendar import calendar
 
 register_heif_opener()
 
@@ -91,7 +91,6 @@ def post_already_scheduled(image_name, scheduled_time):
     response = supabase.table("postsdb").select("*").eq("image_path", f"uploads/{image_name}").eq("scheduled_time", str(scheduled_time)).execute()
     return bool(response.data)
 
-
 def add_post(image_path, caption, scheduled_time, post_date):
     supabase.table("postsdb").insert({
         "image_path": image_path,
@@ -99,6 +98,14 @@ def add_post(image_path, caption, scheduled_time, post_date):
         "scheduled_time": str(scheduled_time),
         "posted": "Pending"
     }).execute()
+
+def update_post(post_id, new_scheduled_time):
+    response = supabase.table("postsdb") \
+        .update({"scheduled_time": str(new_scheduled_time)}) \
+        .eq("id", post_id) \
+        .execute()
+    
+    return response
 
 def get_all_posts():
     response = supabase.table("postsdb").select("*").order("scheduled_time", desc=False).execute()
@@ -378,7 +385,7 @@ def convert_image(input_path, output_format='jpg'):
     output_path = os.path.splitext(input_path)[0] + f".{output_format}"
     image_format = 'JPEG' if output_format.lower() == 'jpg' else 'PNG'
     image.save(output_path, format=image_format)
-    print(f"Converted: {input_path} → {output_path}")
+    # print(f"Converted: {input_path} → {output_path}")
     return output_path
 
 
@@ -496,7 +503,7 @@ else:
 
                 # Save uploaded image temporarily
                 actual_image_path = image.name
-                print(actual_image_path)
+                # print(actual_image_path)
                 temp_input_path = os.path.join("temp", image.name)
                 os.makedirs("temp", exist_ok=True)
                 with open(temp_input_path, "wb") as f:
@@ -515,7 +522,7 @@ else:
                     os.rename(converted_image_path, final_image_path)
 
                     # st.success("✅ Image converted and saved successfully.")
-                    print("Image saved at:", final_image_path)
+                    # print("Image saved at:", final_image_path)
 
                 except Exception as e:
                     st.error(f"❌ Image conversion failed: {e}")
@@ -533,7 +540,7 @@ else:
 
                     generated_output = st.session_state.generated_caption
 
-                    print("Generated caption:", generated_output)
+                    # print("Generated caption:", generated_output)
                     caption = generated_output.split("Recommended Time:")[0].strip()
 
                     hour = None
@@ -819,43 +826,89 @@ else:
         st.markdown("---")
 
     elif menu == "Scheduled Posts":
-        st.title("⚙️ Scheduled Posts")
+        st.title("📅 Scheduled Posts Calendar View")
         posts = get_all_posts()
-        print("Fetched posts", posts)
+        # print("Fetched posts", posts)
+
         if posts:
-            df = pd.DataFrame(posts)
-            df = df.rename(columns={
-                "id": "ID",
-                "image_path": "Image Path",
-                "caption": "Post Caption",
-                "scheduled_time": "Scheduled Time",
-                "posted": "Execution Status"
-            })
-            st.dataframe(df)
+            # Transform posts into calendar events
+            calendar_events = []
+            for post in posts:
+                # Create a hover-friendly string with ID, status, caption
+                hover_text = (
+                    f"ID: {post['id']}\n"
+                    f"Status: {post['posted']}\n"
+                    # f"Caption: {post.get('caption', 'No caption')}"
+                )
+                calendar_events.append({
+                    "title": hover_text,  # This will show on hover
+                    "start": post['scheduled_time'],
+                    "color": "#28a745" if post["posted"] else "#ffc107",
+                })
+
+            options = {
+                "initialView": "dayGridMonth",
+                "editable": False,
+                "selectable": False,
+                "height": 650,
+                "headerToolbar": {
+                    "left": "prev,next today",
+                    "center": "title",
+                    "right": "dayGridMonth,timeGridWeek,timeGridDay"
+                },
+                "eventTimeFormat": {
+                    "hour": "numeric",
+                    "minute": "2-digit",
+                    "meridiem": "short",
+                    "hour12": True
+                }
+            }
+
+            calendar(events=calendar_events, options=options)
 
             st.subheader("Manage Scheduled Posts")
             for post in posts:
-                col1, col2 = st.columns([8, 1])
+                col1, col2, col3 = st.columns([6, 2, 2])
                 with col1:
                     st.write(
                         f"**ID:** {post['id']} | "
                         f"**Time:** {post['scheduled_time']} | "
-                        f"**Status:** {post['posted']}"
+                        f"**Status:** {post['posted']} | "
+                        # f"**Caption:** {post.get('caption', 'No caption')}"
                     )
                 with col2:
                     if st.button("Delete", key=f"delete_{post['id']}"):
                         delete_post(post['id'])
                         st.success(f"Deleted post ID {post['id']}")
                         st.rerun()
+
+                with col3:
+                    with st.expander("✏️ Edit Date", expanded=False):
+                        # Parse to datetime if needed
+                        if isinstance(post['scheduled_time'], str):
+                            post_dt = datetime.fromisoformat(post['scheduled_time'])
+                        else:
+                            post_dt = post['scheduled_time']
+
+                        new_date = st.date_input(f"Date_{post['id']}", value=post_dt.date())
+                        new_time = st.time_input(f"Time_{post['id']}", value=post_dt.time())
+
+                        new_datetime = datetime.combine(new_date, new_time)
+
+                        if st.button("Save", key=f"save_{post['id']}"):
+                            if new_datetime != post_dt:
+                                update_post(post['id'], new_datetime)
+                                st.success(f"Updated post ID {post['id']} to {new_datetime}")
+                                st.rerun()
+                            else:
+                                st.info("No changes made to the scheduled time.")
+
         else:
             st.info("No scheduled posts found.")
 
 
-    # ...existing code...
-
     elif menu == "Configuration":
         st.warning("This feature is under development. Please check back later.")
-
     #     DEFAULT_CONFIG_KEYS = [
     #     "ACCESS_TOKEN", "IG_USER_ID"
     # ]

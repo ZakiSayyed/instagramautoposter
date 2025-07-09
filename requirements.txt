@@ -9,3 +9,4 @@ pillow
 pillow-heif
 plotly
 supabase
+streamlit-calendar

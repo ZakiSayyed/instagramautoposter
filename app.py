@@ -938,8 +938,6 @@ else:
                             if post.get("image_url"):
                                 st.image(post["image_url"], width=150, caption="Preview")
 
-
-
     elif menu == "Configuration":
         st.warning("This feature is under development. Please check back later.")
     #     DEFAULT_CONFIG_KEYS = [

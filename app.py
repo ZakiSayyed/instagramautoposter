@@ -17,7 +17,6 @@ from streamlit_calendar import calendar
 import cloudinary
 import cloudinary.uploader
 
-
 register_heif_opener()
 
 # Use secrets from Streamlit Cloud
@@ -523,97 +522,68 @@ else:
         caption = ""
         converted_image_path = None
         if images:
-            for post_date,image in image_schedule:
-
-                # Save uploaded image temporarily
-                actual_image_path = image.name
-                # print(actual_image_path)
-                temp_input_path = os.path.join("temp", image.name)
-                os.makedirs("temp", exist_ok=True)
-                with open(temp_input_path, "wb") as f:
-                    f.write(image.getbuffer())
-
+            for post_date, image in image_schedule:
                 try:
-                    # Convert and save image to uploads
+                    # Step 1: Save uploaded image temporarily
+                    temp_input_path = os.path.join("temp", image.name)
+                    os.makedirs("temp", exist_ok=True)
+                    with open(temp_input_path, "wb") as f:
+                        f.write(image.getbuffer())
+
+                    # Step 2: Convert image and save to uploads
                     os.makedirs("uploads", exist_ok=True)
                     converted_image_path = convert_image(temp_input_path, "jpg")
                     final_image_path = os.path.join("uploads", os.path.basename(converted_image_path))
-
-                    # Remove existing file if it exists
                     if os.path.exists(final_image_path):
                         os.remove(final_image_path)
-
                     os.rename(converted_image_path, final_image_path)
-                    # Upload to Cloudinary
+
+                    # Step 3: Upload to Cloudinary
                     url = upload_to_cloudinary(final_image_path)
                     if not url:
-                        st.error("❌ Failed to upload image")
-                        final_image_path = None
-                    else:
-                        st.success("✅ Image uploaded successfully")
-                        print("Image URL:", url)
-                    # st.success("✅ Image converted and saved successfully.")
-                    # print("Image saved at:", final_image_path)
+                        st.error(f"❌ Failed to upload image: {image.name}")
+                        continue
+                    st.success(f"✅ Image uploaded: {image.name}")
 
-                except Exception as e:
-                    st.error(f"❌ Image conversion failed: {e}")
-                    final_image_path = None
-
-            if image and final_image_path:
-
-                # Only generate caption if not already generated
-                for post_date,image in image_schedule:
-
-                    if "generated_caption" not in st.session_state or st.session_state.get("last_image") != image.name:
+                    # Step 4: Generate caption if not cached
+                    if (
+                        "generated_caption" not in st.session_state
+                        or st.session_state.get("last_image") != image.name
+                    ):
                         with st.spinner("Generating caption..."):
                             st.session_state.generated_caption = generate_caption(final_image_path, image.name, engagement_data)
-                        st.session_state.last_image = image.name
+                            st.session_state.last_image = image.name
 
                     generated_output = st.session_state.generated_caption
-
-                    # print("Generated caption:", generated_output)
                     caption = generated_output.split("Recommended Time:")[0].strip()
 
-                    hour = None
-                    if generated_output:
-                        match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
-                        if match:
-                            hour = int(match.group(1))
-                            period = match.group(2).upper()
-
-                            # Convert to 24-hour format
-                            if period == "PM" and hour != 12:
-                                hour += 12
-                            elif period == "AM" and hour == 12:
-                                hour = 0
-
-                    if hour is not None:
-                        print("✅ Extracted posting hour (24h):", hour)
+                    # Step 5: Extract time (e.g. "6 PM")
+                    hour = 12  # Default
+                    match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+                    if match:
+                        hour = int(match.group(1))
+                        period = match.group(2).upper()
+                        if period == "PM" and hour != 12:
+                            hour += 12
+                        elif period == "AM" and hour == 12:
+                            hour = 0
                     else:
-                        print("⚠️ Recommended time string not found or invalid.")
-                        hour = 12
-                    if posting_status == False:
-                        with st.spinner("Scheduling post"):  # Add a small delay to ensure caption is generated before displaying
-                            if image and caption:
-                                os.makedirs("uploads", exist_ok=True)  # ✅ Ensure directory exists
-                                image_path = f"uploads/{image.name}"
-                                with open(image_path, "wb") as f:
-                                    f.write(image.read())
-                                my_date = date.today()  # ← replace with your actual date variable
-                                selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
-                                scheduled_time = selected_time
-                                if post_already_scheduled(image.name, scheduled_time):
-                                    st.info(f"✅ Already scheduled: {image.name} on {scheduled_time}")
-                                else:
-                                    add_post(image_path, caption, scheduled_time, url)
-                                    st.success("✅ Post scheduled successfully!")
+                        st.warning("⚠️ Recommended time not found, using 12:00 PM default")
 
-                            else:
-                                st.error("Please provide both image and caption")
+                    # Step 6: Schedule post
+                    if posting_status is False:
+                        selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
+                        if post_already_scheduled(image.name, selected_time):
+                            st.info(f"✅ Already scheduled: {image.name} on {selected_time}")
+                        else:
+                            add_post(final_image_path, caption, selected_time, url)
+                            st.success(f"✅ Post scheduled successfully for {image.name}")
                     else:
-                        st.success("Post already scheduled.")
-            else:
-                st.info("Please upload an image to generate a caption.")
+                        st.info("Post already scheduled.")
+
+                except Exception as e:
+                    st.error(f"❌ Error processing image {image.name}: {e}")
+
 
     elif menu == "Analytics":
         st.title("📊 Analytics Dashboard")
@@ -906,6 +876,8 @@ else:
 
             with tab2:
                 st.subheader("Manage Scheduled Posts")
+                posts = sorted(posts, key=lambda x: x['id'], reverse=True)
+
                 for post in posts:
                     with st.expander(f"📌 Post ID {post['id']}", expanded=False):
                         action_col1, action_col2, action_col3 = st.columns([6, 2, 2])
@@ -992,3 +964,4 @@ else:
         st.session_state.logged_in = False
         st.success("You have been logged out successfully.")
         st.rerun()
+        

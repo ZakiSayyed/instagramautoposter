@@ -880,7 +880,6 @@ else:
                         "color": "#28a745" if post["posted"] else "#ffc107",
                     })
                 
-
                 options = {
                     "initialView": "dayGridMonth",
                     "editable": False,
@@ -907,75 +906,66 @@ else:
             with tab2:
                 st.subheader("Manage Scheduled Posts")
                 for post in posts:
-                    col1, col2, col3,col4= st.columns([6, 2, 3, 3])
-                    row1, row2 = st.columns([1, 20])
-                    with row1:
-                        with col1:
+                    with st.expander(f"📌 Post ID {post['id']}", expanded=False):
+                        action_col1, action_col2, action_col3 = st.columns([6, 2, 2])
+                        with action_col1:
                             st.write(
                                 f"**ID:** {post['id']} | "
                                 f"**Time:** {post['scheduled_time']} | "
-                                f"**Status:** {post['posted']} | "
-                                # f"**Picture:** [View Image]({post['image_url']}) | "
-                                # f"**Caption:** {post.get('caption', 'No caption')}"
+                                f"**Status:** {post['posted']} |"
                             )
-                        
-                        with col2:
+
+                        with action_col2:
                             if st.button("Delete", key=f"delete_{post['id']}"):
                                 delete_post(post['id'])
                                 st.success(f"Deleted post ID {post['id']}")
                                 st.rerun()
 
-                        with col3:
-                            with st.expander("✏️ Edit Date", expanded=False):
-                                # Parse to datetime if needed
-                                if isinstance(post['scheduled_time'], str):
-                                    post_dt = datetime.fromisoformat(post['scheduled_time'])
-                                else:
-                                    post_dt = post['scheduled_time']
+                        with action_col3:
+                            edit_date = st.checkbox("✏️ Edit Date", key=f"edit_date_toggle_{post['id']}")
 
-                                new_date = st.date_input(f"Date", value=post_dt.date())
-                                new_time = st.time_input(f"Time", value=post_dt.time())
+                        if edit_date:
+                            post_dt = (
+                                datetime.fromisoformat(post['scheduled_time'])
+                                if isinstance(post['scheduled_time'], str)
+                                else post['scheduled_time']
+                            )
+                            new_date = st.date_input(f"Date_{post['id']}", value=post_dt.date())
+                            new_time = st.time_input(f"Time_{post['id']}", value=post_dt.time())
+                            new_datetime = datetime.combine(new_date, new_time)
 
-                                new_datetime = datetime.combine(new_date, new_time)
+                            if new_datetime != post_dt:
+                                if st.button("Save New Time", key=f"save_{post['id']}"):
+                                    update_post(post['id'], 'scheduled_time', new_datetime)
+                                    st.success(f"Updated post ID {post['id']} to {new_datetime}")
+                                    time.sleep(1)
+                                    st.rerun()
 
-                                if st.button("Save", key=f"save_{post['id']}"):
-                                    if new_datetime != post_dt:
-                                        update_post(post['id'], 'scheduled_time', new_datetime)
-                                        st.success(f"Updated post ID {post['id']} to {new_datetime}")
-                                        time.sleep(3)
+                        # Layout for caption and image
+                        left_col, right_col = st.columns([3, 1])
+
+                        with left_col:
+                            if post.get("caption"):
+                                default_caption = post.get("caption", "")
+                                new_caption = st.text_area(
+                                    "Edit Caption",
+                                    value=default_caption,
+                                    key=f"caption_input_{post['id']}",
+                                    height=150,
+                                )
+
+                                if new_caption != default_caption:
+                                    if st.button("Update Caption", key=f"update_caption_{post['id']}"):
+                                        update_post(post['id'], 'caption', new_caption)
+                                        st.success("Caption updated successfully.")
+                                        time.sleep(1)
                                         st.rerun()
-                                    else:
-                                        st.info("No changes made to the scheduled time.")
-                        
-                        with col4:
+
+                        with right_col:
                             if post.get("image_url"):
-                                if st.checkbox("Show image", key=f"show_image_{post['id']}"):
-                                    st.image(post["image_url"], width=150, caption="Preview")
+                                st.image(post["image_url"], width=150, caption="Preview")
 
-                    with row2:
-                        if post.get("caption"):
-                            if st.checkbox("Edit Caption", key=f"edit_caption_{post['id']}"):
-                                caption_col, update_btn_col = st.columns([10, 3])
-                                with caption_col:
-                                    # Generate unique keys per post to retain state
-                                    default_caption = post.get("caption", "")
-                                    new_caption = st.text_area(
-                                        label="Edit Caption:",
-                                        value=default_caption,
-                                        key=f"caption_input_{post['id']}",
-                                        height=200,
-                                        label_visibility="collapsed"
-                                    )
 
-                                with update_btn_col:
-                                    # Show update button only if caption has changed
-                                    if new_caption != default_caption:
-                                        if st.button("Update Caption", key=f"update_caption_{post['id']}"):
-                                            # 🔄 Call your update_post() function or create a new one to update the caption
-                                            update_post(post['id'], 'caption', new_caption)  # Modify update_post to accept caption
-                                            st.success("Caption updated successfully.")
-                                            time.sleep(3)
-                                            st.rerun()
 
     elif menu == "Configuration":
         st.warning("This feature is under development. Please check back later.")

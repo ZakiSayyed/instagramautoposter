@@ -149,7 +149,9 @@ def delete_post(post_id):
 #______________________________________________________________________________________________________#
 
 #Generate captions
-def generate_caption(image_path, image_name, engagement_data):
+def generate_caption(image_path, image_name, engagement_data, used_hours=None):
+    if used_hours is None:
+        used_hours = set()
 
     headers = {
         "Content-Type": "application/json",
@@ -185,7 +187,9 @@ def generate_caption(image_path, image_name, engagement_data):
     Engagement Data:
     {engagement_data}
     """
-
+    if used_hours:
+        avoid_times = ", ".join(f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}" for h in sorted(used_hours))
+        recommended_time_prompt += f"\n\nAlready used times (avoid): {avoid_times}"
     # -------------------- Step 2: Caption Format Structure --------------------
 
     structure = """
@@ -521,8 +525,11 @@ else:
             images = None
         caption = ""
         converted_image_path = None
+
+        used_hours = set()  # ✅ This ensures we track previously used times
         if images:
             for post_date, image in image_schedule:
+
                 try:
                     # Step 1: Save uploaded image temporarily
                     temp_input_path = os.path.join("temp", image.name)
@@ -551,7 +558,12 @@ else:
                         or st.session_state.get("last_image") != image.name
                     ):
                         with st.spinner("Generating caption..."):
-                            st.session_state.generated_caption = generate_caption(final_image_path, image.name, engagement_data)
+                            st.session_state.generated_caption = generate_caption(
+                                    final_image_path,
+                                    image.name,
+                                    engagement_data,
+                                    used_hours=used_hours
+                                )
                             st.session_state.last_image = image.name
 
                     generated_output = st.session_state.generated_caption
@@ -562,6 +574,7 @@ else:
                     match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
                     if match:
                         hour = int(match.group(1))
+                        used_hours.add(hour)
                         period = match.group(2).upper()
                         if period == "PM" and hour != 12:
                             hour += 12

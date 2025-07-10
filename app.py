@@ -1,6 +1,6 @@
 #Prod
-from datetime import datetime, date, time, timedelta
-import os
+from datetime import datetime, timedelta
+import time
 import streamlit as st
 import requests
 import pandas as pd
@@ -824,7 +824,7 @@ else:
                     col_index = (col_index + 1) % 2
                     if col_index == 0 and idx != len(METRICS) - 1:
                         chart_cols = st.columns(2)
-        st.markdown("---")
+        st.markdown("----")
 
     elif menu == "Scheduled Posts":
         st.title("📅 Scheduled Posts Calendar View")
@@ -903,8 +903,8 @@ else:
                                 if isinstance(post['scheduled_time'], str)
                                 else post['scheduled_time']
                             )
-                            new_date = st.date_input(f"Date_{post['id']}", value=post_dt.date())
-                            new_time = st.time_input(f"Time_{post['id']}", value=post_dt.time())
+                            new_date = st.date_input(f"Date", value=post_dt.date())
+                            new_time = st.time_input(f"Time", value=post_dt.time())
                             new_datetime = datetime.combine(new_date, new_time)
 
                             if new_datetime != post_dt:
@@ -962,4 +962,3 @@ else:
         st.session_state.logged_in = False
         st.success("You have been logged out successfully.")
         st.rerun()
-        

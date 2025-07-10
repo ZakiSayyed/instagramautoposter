@@ -153,6 +153,7 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None):
     if used_hours is None:
         used_hours = set()
 
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {st.secrets['OPENAI_API_KEY']}"

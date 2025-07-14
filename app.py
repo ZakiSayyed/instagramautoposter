@@ -38,7 +38,7 @@ CLOUD_NAME = st.secrets["CLOUD_NAME"]
 API_KEY = st.secrets["API_KEY"]
 
 #______________________________________________________________________________________________________#
-# 🌐 Configure Cloudinary
+# 🌐 Configure Cloudinary settings
 cloudinary.config(
     cloud_name=CLOUD_NAME,
     api_key=API_KEY,

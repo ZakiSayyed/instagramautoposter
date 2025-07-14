@@ -38,7 +38,6 @@ CLOUD_NAME = st.secrets["CLOUD_NAME"]
 API_KEY = st.secrets["API_KEY"]
 
 #______________________________________________________________________________________________________#
-
 # 🌐 Configure Cloudinary
 cloudinary.config(
     cloud_name=CLOUD_NAME,
@@ -88,13 +87,13 @@ def build_post_insight_json():
     for post in posts:
         post_data = {
             "id": post["id"],
+            "caption": post["caption"]
         }
 
         # Parse timestamps
         timestamp_utc = parser.isoparse(post["timestamp"])
         timestamp_est = timestamp_utc.astimezone(pytz.timezone("US/Eastern"))
         post_data["timestamp_est"] = timestamp_est.isoformat()
-
         # Add engagement
         metrics = get_media_engagement(post["id"])
         post_data["metrics"] = metrics
@@ -108,43 +107,49 @@ def build_post_insight_json():
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
+# Check if a post with the same image and scheduled time is already scheduled
 def post_already_scheduled(image_name, scheduled_time):
-    response = supabase.table("postsdb").select("*").eq("image_path", f"uploads/{image_name}").eq("scheduled_time", str(scheduled_time)).execute()
+    image_path = f"uploads/{image_name}"
+    scheduled_time = str(scheduled_time)
+    
+    response = supabase.table("postsdb").select("*") \
+        .eq("image_path", image_path) \
+        .eq("scheduled_time", scheduled_time) \
+        .execute()
+    
     return bool(response.data)
 
+# Add a new post to the Supabase database
 def add_post(image_path, caption, scheduled_time, url):
-    supabase.table("postsdb").insert({
+    data = {
         "image_path": image_path,
         "caption": caption,
         "scheduled_time": str(scheduled_time),
         "posted": "Pending",
         "image_url": url
-    }).execute()
+    }
+    supabase.table("postsdb").insert(data).execute()
 
+# Update a single column in a post by post ID
 def update_post(post_id, colname, value):
     response = supabase.table("postsdb") \
-        .update({f"{colname}": str(value)}) \
+        .update({colname: str(value)}) \
         .eq("id", post_id) \
         .execute()
-    
     return response
 
+# Retrieve all posts ordered by scheduled time (ascending)
 def get_all_posts():
-    response = supabase.table("postsdb").select("*").order("scheduled_time", desc=False).execute()
+    response = supabase.table("postsdb").select("*") \
+        .order("scheduled_time", desc=False) \
+        .execute()
     return response.data if response.data else []
-
-def get_due_posts():
-    from datetime import datetime
-    now = datetime.now().isoformat()
-    response = supabase.table("postsdb").select("*").eq("posted", "Pending").lte("scheduled_time", now).execute()
-    return response.data if response.data else []
-
-def mark_posted(post_id):
-    supabase.table("postsdb").update({"posted": "Completed"}).eq("id", post_id).execute()
 
 def delete_post(post_id):
-    supabase.table("postsdb").delete().eq("id", post_id).execute()
+    supabase.table("postsdb") \
+        .delete() \
+        .eq("id", post_id) \
+        .execute()
 #End of Database codes
 #______________________________________________________________________________________________________#
 
@@ -152,7 +157,6 @@ def delete_post(post_id):
 def generate_caption(image_path, image_name, engagement_data, used_hours=None):
     if used_hours is None:
         used_hours = set()
-
 
     headers = {
         "Content-Type": "application/json",
@@ -243,6 +247,7 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None):
     • Match the format and tone defined below
     • Avoid repeating hashtags
     • Style: confident, inclusive, culturally connected, and founder-led
+    • Do not use the captions already generated from the engagement data, be innovative and generate something out of the box.
 
     Follow this structure exactly:
     {structure}

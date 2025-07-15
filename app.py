@@ -105,6 +105,7 @@ def build_post_insight_json():
 #______________________________________________________________________________________________________#
 #Database codes
 
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def check_posts_with_dont_use_until_today():
     today = date.today()

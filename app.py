@@ -191,7 +191,6 @@ def schedule_post(post_ids, dont_use_until=90):
                 print(f"Generated caption: {generated_output}")
                 caption = generated_output.split("Recommended Time:")[0].strip()
 
-                hour = 12  # Default
                 match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
                 if match:
                     hour = int(match.group(1))
@@ -416,7 +415,7 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None, i
     No matter what ALWAYS use the following response format:
     Caption:
     Recommended Time:
-    Strict instructions to only resturn the above and nothing else, don't use any opening comments or lines. ONLY return the caption and Recommended time.
+    Strict instructions to only resturn the above and nothing else, don't use any opening comments or lines or even title like Caption and then the caption, simply return the caption. ONLY return the caption and Recommended time.
     Important:
     If you have value for avoid hours, choose a different recommended time.
     Use the following information to determine the recommended time:

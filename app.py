@@ -1,5 +1,5 @@
 #Prod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import time
 import streamlit as st
 import requests
@@ -38,7 +38,6 @@ CLOUD_NAME = st.secrets["CLOUD_NAME"]
 API_KEY = st.secrets["API_KEY"]
 
 #______________________________________________________________________________________________________#
-
 # 🌐 Configure Cloudinary
 cloudinary.config(
     cloud_name=CLOUD_NAME,
@@ -88,13 +87,13 @@ def build_post_insight_json():
     for post in posts:
         post_data = {
             "id": post["id"],
+            "caption": post["caption"]
         }
 
         # Parse timestamps
         timestamp_utc = parser.isoparse(post["timestamp"])
         timestamp_est = timestamp_utc.astimezone(pytz.timezone("US/Eastern"))
         post_data["timestamp_est"] = timestamp_est.isoformat()
-
         # Add engagement
         metrics = get_media_engagement(post["id"])
         post_data["metrics"] = metrics
@@ -108,58 +107,227 @@ def build_post_insight_json():
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def check_posts_with_dont_use_until_today():
+    today = date.today()
+    try:
+        response = supabase.table("postsdb") \
+            .select("*") \
+            .execute()
+        matching_posts = []
+        for post in response.data:
+            dont_use_until_str = post.get("dont_use_until")
+            if dont_use_until_str:
+                try:
+                    # Parse the string into a datetime object
+                    dont_use_until_dt = datetime.strptime(dont_use_until_str.strip(), "%Y-%m-%d %H:%M:%S")
 
+                    # Compare only the date parts
+                    if dont_use_until_dt.date() == today:
+                        matching_posts.append(post)
+
+                except ValueError as ve:
+                    print(f"⚠️ Skipping invalid datetime: {dont_use_until_str} ({ve})")
+        if matching_posts:
+            for post in matching_posts:
+                print(f"📌 Match found: {post['image_path']} — {post['dont_use_until']}")
+                reuse_post(post['id'])
+                if response:
+                    print("Post ready to reuse")
+                    time.sleep(2)
+                # schedule_post(post['id'])
+                pass
+        else:
+            print("✅ No posts with today's dont_use_until date.")
+
+    except Exception as e:
+        print(f"❌ Error checking posts: {e}")
+
+def check_reusable_posts():
+    try:
+        response = supabase.table("postsdb") \
+            .select("id, caption, scheduled_time") \
+            .eq("caption", "") \
+            .eq("scheduled_time", "") \
+            .execute()
+
+        if response.data:
+            reusable_ids = [post["id"] for post in response.data]
+            print(f"✅ Reusable Post IDs: {reusable_ids}")
+            return reusable_ids
+        else:
+            print("✅ No reusable posts found.")
+            return []
+
+    except Exception as e:
+        print(f"❌ Error checking reusable posts: {e}")
+        return []
+
+def schedule_post(post_ids, dont_use_until=90):
+    for post_id in post_ids:
+        used_hours = set()
+        try:
+            response = supabase.table("postsdb") \
+                .select("*") \
+                .eq("id", post_id) \
+                .single() \
+                .execute()
+
+            if response.data:
+                image_url = response.data.get("image_url")
+                image_path = response.data.get("image_path")
+                
+                # print(f"Image URL: {image_url}")
+                
+                engagement_data = build_post_insight_json() 
+                generated_caption = generate_caption(
+                            None,
+                            None,
+                            engagement_data,
+                            used_hours,
+                            image_url
+                        )
+
+                generated_output = generated_caption
+                # print(f"Generated caption: {generated_output}")
+                caption = generated_output.split("Recommended Time:")[0].strip()
+
+                hour = 12  # Default
+                match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+                if match:
+                    hour = int(match.group(1))
+                    used_hours.add(hour)
+                    period = match.group(2).upper()
+                    if period == "PM" and hour != 12:
+                        hour += 12
+                    elif period == "AM" and hour == 12:
+                        hour = 0
+                    start_date = datetime.today().date()
+                    selected_time = datetime.combine(start_date, datetime.min.time()).replace(hour=hour, minute=0)
+                    dontuseuntill = datetime.combine(start_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
+                    # print(dontuseuntill)
+                    update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)                           
+                else:
+                    print("⚠️ Recommended time not found, using 12:00 PM default")
+                    st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+                    start_date = datetime.today().date()
+                    post_date = start_date + timedelta(days=batch_num * interval_days)
+                    selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
+                    dontuseuntill = datetime.combine(post_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
+                    # print(dontuseuntill)
+                    update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)    
+
+            else:
+                print(f"❌ No post found with id: {post_id}")
+        
+        except Exception as e:
+            print(f"❌ Error fetching post: {e}")
+
+
+def reuse_post(post_id):
+    response = supabase.table("postsdb") \
+        .update({
+            "scheduled_time": "",       # Empty string
+            "caption": "",              # Empty string
+            "posted": "Pending",        # Set status to "Pending"
+            "dont_use_until": ""        # Empty string
+        }) \
+        .eq("id", post_id) \
+        .execute()
+
+    return response
+
+# Check if a post with the same image and scheduled time is already scheduled
 def post_already_scheduled(image_name, scheduled_time):
-    response = supabase.table("postsdb").select("*").eq("image_path", f"uploads/{image_name}").eq("scheduled_time", str(scheduled_time)).execute()
+    image_path = f"uploads/{image_name}"
+    scheduled_time = str(scheduled_time)
+    
+    response = supabase.table("postsdb").select("*") \
+        .eq("image_path", image_path) \
+        .eq("scheduled_time", scheduled_time) \
+        .execute()
+    
     return bool(response.data)
 
-def add_post(image_path, caption, scheduled_time, url):
-    supabase.table("postsdb").insert({
+def post_already_scheduled_check(image_name):
+    image_path = image_name
+    response = supabase.table("postsdb").select("*") \
+        .eq("image_path", image_path) \
+        .execute()
+
+    return bool(response.data)
+
+# Add a new post to the Supabase database
+def add_post(image_path, caption, scheduled_time, url, dontuse):
+    data = {
         "image_path": image_path,
         "caption": caption,
         "scheduled_time": str(scheduled_time),
         "posted": "Pending",
-        "image_url": url
-    }).execute()
+        "image_url": url,
+        "dont_use_until": str(dontuse)
+    }
+    supabase.table("postsdb").insert(data).execute()
 
-def update_post(post_id, colname, value):
+def update_resuseable_posts(post_id, caption, scheduled_time, dontuse):
+    data = {
+        "caption": caption,
+        "scheduled_time": str(scheduled_time),
+        "posted": "Pending",
+        "dont_use_until": str(dontuse)
+    }
+
     response = supabase.table("postsdb") \
-        .update({f"{colname}": str(value)}) \
+        .update(data) \
         .eq("id", post_id) \
         .execute()
-    
+
     return response
 
+# Update a single column in a post by post ID
+def update_post(post_id, colname, value):
+    response = supabase.table("postsdb") \
+        .update({colname: str(value)}) \
+        .eq("id", post_id) \
+        .execute()
+    return response
+
+# Retrieve all posts ordered by scheduled time (ascending)
 def get_all_posts():
-    response = supabase.table("postsdb").select("*").order("scheduled_time", desc=False).execute()
+    response = supabase.table("postsdb").select("*") \
+        .order("scheduled_time", desc=False) \
+        .execute()
     return response.data if response.data else []
-
-def get_due_posts():
-    from datetime import datetime
-    now = datetime.now().isoformat()
-    response = supabase.table("postsdb").select("*").eq("posted", "Pending").lte("scheduled_time", now).execute()
-    return response.data if response.data else []
-
-def mark_posted(post_id):
-    supabase.table("postsdb").update({"posted": "Completed"}).eq("id", post_id).execute()
 
 def delete_post(post_id):
-    supabase.table("postsdb").delete().eq("id", post_id).execute()
+    supabase.table("postsdb") \
+        .delete() \
+        .eq("id", post_id) \
+        .execute()
 #End of Database codes
 #______________________________________________________________________________________________________#
 
 #Generate captions
-def generate_caption(image_path, image_name, engagement_data):
+def generate_caption(image_path, image_name, engagement_data, used_hours=None, image_url=None):
+    # print(f"Used hours is : {used_hours}")
+    # print("Generate caption function ", image_url)
+    if used_hours is None:
+        used_hours = set()
 
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {st.secrets['OPENAI_API_KEY']}"
     }
 
-    with open(image_path, "rb") as img_file:
-        image_data = img_file.read()
-    base64_image = base64.b64encode(image_data).decode('utf-8')
-
+    if image_url:
+        img_response = requests.get(image_url)
+        if img_response.status_code == 200:
+            base64_image = base64.b64encode(img_response.content).decode('utf-8')
+        else:
+            print(f"❌ Failed to fetch image from URL: {image_url}")
+            return None
+    else:
+        print("❌ No image URL provided.")
+        return None
 
     # -------------------- Step 1: Recommended Posting Time Prompt --------------------
 
@@ -185,7 +353,9 @@ def generate_caption(image_path, image_name, engagement_data):
     Engagement Data:
     {engagement_data}
     """
-
+    if used_hours:
+        avoid_times = ", ".join(f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}" for h in sorted(used_hours))
+        recommended_time_prompt += f"\n\nAlready used times (avoid): {avoid_times}"
     # -------------------- Step 2: Caption Format Structure --------------------
 
     structure = """
@@ -238,13 +408,18 @@ def generate_caption(image_path, image_name, engagement_data):
     • Match the format and tone defined below
     • Avoid repeating hashtags
     • Style: confident, inclusive, culturally connected, and founder-led
+    • Do not use the captions already generated from the engagement data, be innovative and generate something out of the box.
 
     Follow this structure exactly:
     {structure}
 
-    Your response must always use "Recommended Time:" to indicate the best time to post (don't use anything else to return the time other than "Recommended Time:").    
+    No matter what ALWAYS use the following response format:
+    Caption:
+    Recommended Time:
 
-    Use the following information to determine it:
+    Important:
+    If you have value for avoid hours, choose a different recommended time.
+    Use the following information to determine the recommended time:
     {recommended_time_prompt}
     """
 
@@ -412,6 +587,11 @@ def convert_image(input_path, output_format='jpg'):
     return output_path
 
 
+check_posts_with_dont_use_until_today()
+post_id = check_reusable_posts()
+if post_id:
+    schedule_post(post_id)
+
 st.set_page_config(page_title="Instagram Auto Poster")
 posting_status = False
 
@@ -452,12 +632,16 @@ else:
         st.header("Select schedule criteria")
         num_of_posts = st.number_input("Number of posts per interval", min_value=1, step=1, format="%d")
         frequency = st.selectbox("Post frequency", ["Daily", "Weekly", "Monthly"])
+        dont_use_until = st.number_input(f"Do not use for next - Days", min_value=0, step=1, format="%d")
+        st.write(f"Don't use for the next {dont_use_until} days")
         st.write(f"Number of posts: {num_of_posts}")
         st.write(f"Frequency: {frequency}")
+        
         proceed = False  # Whether to proceed with scheduling
 
-        with st.spinner("Generating engaement data..."):
-            engagement_data = build_post_insight_json()     
+        #Generate engagement data
+        # with st.spinner("Generating engaement data..."):
+        engagement_data = build_post_insight_json()     
 
         if num_of_posts and frequency:
             images = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png", "heic", "heif"], accept_multiple_files=True)
@@ -475,8 +659,8 @@ else:
                 if remaining_images != 0:
                     st.warning(f"You'll have **{remaining_images} leftover image(s)** which won’t fill a complete batch.")
 
-                    user_choice = st.radio("Do you want to proceed with this?", ["Nothing selected", "Yes, proceed", "No, I'll upload more images"])
-
+                    # user_choice = st.radio("Do you want to proceed with this?", ["Nothing selected", "Yes, proceed", "No, I'll upload more images"])
+                    user_choice = "Yes, proceed"
                     if user_choice == "Yes, proceed":
                         proceed = True
                     else:
@@ -521,8 +705,11 @@ else:
             images = None
         caption = ""
         converted_image_path = None
+
+        used_hours = set()  # ✅ This ensures we track previously used times
         if images:
             for post_date, image in image_schedule:
+
                 try:
                     # Step 1: Save uploaded image temporarily
                     temp_input_path = os.path.join("temp", image.name)
@@ -538,48 +725,73 @@ else:
                         os.remove(final_image_path)
                     os.rename(converted_image_path, final_image_path)
 
-                    # Step 3: Upload to Cloudinary
-                    url = upload_to_cloudinary(final_image_path)
-                    if not url:
-                        st.error(f"❌ Failed to upload image: {image.name}")
-                        continue
-                    st.success(f"✅ Image uploaded: {image.name}")
-
-                    # Step 4: Generate caption if not cached
-                    if (
-                        "generated_caption" not in st.session_state
-                        or st.session_state.get("last_image") != image.name
-                    ):
-                        with st.spinner("Generating caption..."):
-                            st.session_state.generated_caption = generate_caption(final_image_path, image.name, engagement_data)
-                            st.session_state.last_image = image.name
-
-                    generated_output = st.session_state.generated_caption
-                    caption = generated_output.split("Recommended Time:")[0].strip()
-
-                    # Step 5: Extract time (e.g. "6 PM")
-                    hour = 12  # Default
-                    match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
-                    if match:
-                        hour = int(match.group(1))
-                        period = match.group(2).upper()
-                        if period == "PM" and hour != 12:
-                            hour += 12
-                        elif period == "AM" and hour == 12:
-                            hour = 0
+                    # print(f"Final image path: {final_image_path}")
+                    # print(f"Image name: {image.name}")                              
+                    img_name = image.name
+                    if post_already_scheduled_check(image.name):
+                        st.info(f"{img_name} - Post already used")
                     else:
-                        st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+                        with st.spinner("Uploading Image"):
+                            # Step 3: Upload to Cloudinary
+                            url = upload_to_cloudinary(final_image_path)
+                            # print("URL is ", url)
+                            if not url:
+                                st.error(f"❌ Failed to upload image: {image.name}")
+                                continue
+                            # st.success(f"✅ Image uploaded: {image.name}")
 
-                    # Step 6: Schedule post
-                    if posting_status is False:
-                        selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
-                        if post_already_scheduled(image.name, selected_time):
-                            st.info(f"✅ Already scheduled: {image.name} on {selected_time}")
-                        else:
-                            add_post(final_image_path, caption, selected_time, url)
-                            st.success(f"✅ Post scheduled successfully for {image.name}")
-                    else:
-                        st.info("Post already scheduled.")
+                            # Step 4: Generate caption if not cached
+                            # print("Generating caption")
+                            try:
+                                if (
+                                    "generated_caption" not in st.session_state
+                                    or st.session_state.get("last_image") != image.name
+                                ):
+                                    # with st.spinner("Generating caption..."):
+                                    st.session_state.generated_caption = generate_caption(
+                                            final_image_path,
+                                            image.name,
+                                            engagement_data,
+                                            used_hours,
+                                            image_url=url
+                                        )
+                                    st.session_state.last_image = image.name
+                            except Exception as e:
+                                print("Error generating caption : ", e)
+                            # print("Caption generated")
+                            generated_output = st.session_state.generated_caption
+                            # print(generated_output)
+                            caption = generated_output.split("Recommended Time:")[0].strip()
+
+                            # Step 5: Extract time (e.g. "6 PM")
+                            hour = 12  # Default
+                            match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+                            if match:
+                                hour = int(match.group(1))
+                                used_hours.add(hour)
+                                period = match.group(2).upper()
+                                if period == "PM" and hour != 12:
+                                    hour += 12
+                                elif period == "AM" and hour == 12:
+                                    hour = 0
+                            else:
+                                st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+
+                            # Step 6: Schedule post
+                            if posting_status is False:
+                                selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
+                                if post_already_scheduled(image.name, selected_time):
+                                    st.info(f"✅ Already scheduled: {image.name} on {selected_time}")
+                                else:
+                                    dontuseuntill = datetime.combine(post_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
+                                    # print(dontuseuntill)
+
+                                    add_post(image.name, caption, selected_time, url, dontuseuntill)
+                                    # st.success(f"✅ Post scheduled successfully for {image.name}")
+                                    st.success(f"✅ Image uploaded: {image.name}")
+
+                            else:
+                                st.info("Post already scheduled.")
 
                 except Exception as e:
                     st.error(f"❌ Error processing image {image.name}: {e}")

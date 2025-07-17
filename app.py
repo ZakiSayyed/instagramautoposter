@@ -331,96 +331,87 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None, i
     # -------------------- Step 1: Recommended Posting Time Prompt --------------------
 
     recommended_time_prompt = f"""
-    You are a social media strategist helping an eyewear brand optimize their Instagram posting schedule.
+    You are a social media strategist for a Black-owned luxury eyewear brand. Your task is to identify the **single best hour (in EST)** to post on Instagram to maximize engagement.
 
-    Your task is to:
-    • Analyze hourly engagement trends across past posts.
-    • Optionally factor in follower online activity per hour (if available).
-    • Recommend the **single best hour to post (in EST)** to maximize visibility and engagement.
-
-    Data available:
-    • Post timestamps (UTC + EST)
-    • Engagement metrics per post: likes, comments, shares, saves, total_interactions
-    • Average engagement per hour (0–23 UTC)
-    • (Optional) Online follower distribution by hour
+    Use the following data:
+    • Post timestamps (UTC and EST)
+    • Engagement per post: likes, comments, shares, saves, total_interactions
+    • Avg engagement by hour (0–23 UTC)
+    • (Optional) Follower online activity by hour
 
     Instructions:
-    • Prioritize hours where engagement is consistently high.
-    • If follower activity supports the same hours, boost confidence in those times.
-    • Return only the best hour to post (EST), with a short explanation if needed.
+    • Prioritize hours with consistently high engagement.
+    • If follower activity aligns with those hours, boost confidence in those times.
+    • Avoid the following hours if provided.
+    • Return **only one best hour (EST)** with a brief explanation if necessary.
 
     Engagement Data:
     {engagement_data}
     """
+
     if used_hours:
         avoid_times = ", ".join(f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}" for h in sorted(used_hours))
-        recommended_time_prompt += f"\n\nAlready used times (avoid): {avoid_times}"
+        recommended_time_prompt += f"\n\nAvoid these hours: {avoid_times}"
+
     # -------------------- Step 2: Caption Format Structure --------------------
 
     structure = """
-    1. Hook:  
-    • One clever, stylish, and confident sentence  
-    • Use tasteful emojis  
+    1. Hook (1 sentence):
+    • Bold, clever, and confident
+    • Use tasteful emojis
     • Must feel culturally aware and modern
 
-    2. Core description (2–3 short punchy sentences):  
-    • Describe the eyewear or scene  
-    • Highlight craftsmanship, culture, quality, and brand values  
-    • Mention design names like “Barbados Edition” if visually identifiable  
-    • Reference current seasons or cultural moments if relevant
+    2. Core description (2–3 punchy lines):
+    • Describe the eyewear or scene
+    • Highlight craftsmanship, culture, quality, and brand story
+    • Mention design names like “Barbados Edition” if visible
+    • Reference the season or cultural moments (if relevant)
 
-    3. Caption break: Use a single em dash (—)
+    3. Caption break:
+    • Use one em dash (—)
 
-    4. Hashtags block (max 15):  
-    • Always include: #CIKEyewear #CultureInEveryFrame  
+    4. Hashtag block (max 15):
+    • Always include: #CIKEyewear #CultureInEveryFrame
     • Choose from:
-        #BlackOwnedEyewear  
-        #HandmadeInItaly  
-        #LuxuryEyewear  
-        #BarbadosEdition  
-        #AmericaBlackEdition  
-        #StatementSunglasses  
-        #BuiltByHand  
-        #BoldByDesign  
-        #SlowFashion  
-        #ArtisanEyewear  
-        #IslandStyle  
-        #BlackLuxury  
-        #CulturalCraftsmanship  
-        #FounderLed  
-        #SummerStyle
+    #BlackOwnedEyewear #HandmadeInItaly #LuxuryEyewear #BarbadosEdition
+    #AmericaBlackEdition #StatementSunglasses #BuiltByHand #BoldByDesign
+    #SlowFashion #ArtisanEyewear #IslandStyle #BlackLuxury
+    #CulturalCraftsmanship #FounderLed #SummerStyle
     """
 
-    # -------------------- Step 3: Final Prompt to Send to LLM --------------------
+# -------------------- Step 3: Final Prompt to LLM --------------------
 
     prompt_use = f"""
     Generate an Instagram caption for a photo of CIK Eyewear sunglasses.
 
     Brand Overview:
-    CIK is a Black-owned, Caribbean-American–founded luxury eyewear brand. Every pair is handmade in Italy using premium materials and cultural storytelling. Designs include symbols like the Barbados Trident or the eagle-beak bridge of the America Black Edition. The brand is bold, confident, heritage-driven, and stylish—representing global Black excellence.
+    CIK is a Black-owned, Caribbean-American–founded luxury eyewear brand. Every pair is handmade in Italy with premium materials and cultural storytelling. Designs include the Barbados Trident and the eagle-beak bridge from the America Black Edition. The tone is bold, confident, founder-led, and represents global Black excellence.
 
     Instructions:
-    • Reference the image name `{image_name}` (without file extension if the name makes sense otherwise ignore it)
-    • Write a caption that reflects what’s visible or known about the "eyewear" (use the background for vibe only)
-    • Avoid generic filler text or intros
-    • Use no more than 200 characters total
-    • Match the format and tone defined below
-    • Avoid repeating hashtags
-    • Style: confident, inclusive, culturally connected, and founder-led
-    • Do not use the captions already generated from the engagement data, be innovative and generate something out of the box.
+    • Refer to the image name `{image_name}` (ignore extension, and skip if irrelevant).
+    • Write a caption that reflects what is visible or known about the sunglasses.
+    • Use the background only to set the mood, not to describe it literally.
+    • Avoid filler text or overused phrases.
+    • Do not reuse captions from previous engagement data.
+    • Max 200 characters.
+    • Follow the exact format and tone below.
+    • Style: confident, culturally grounded, stylish.
 
-    Follow this structure exactly:
+    Structure:
     {structure}
 
-    No matter what ALWAYS use the following response format:
-    Caption:
-    Recommended Time:
-    Strict instructions to only resturn the above and nothing else, don't use any opening comments or lines or even title like Caption and then the caption, simply return the caption. ONLY return the caption and Recommended time.
-    Important:
-    If you have value for avoid hours, choose a different recommended time.
-    Use the following information to determine the recommended time:
+    Important Formatting Instructions:
+    • **Only return the caption text** – do not label it with "Caption:"
+    • Then, on the next line, return `Recommended Time:` followed by the best EST hour
+    • Do not add any extra lines, commentary, or labels
+    • Final output format must be:
+    [Caption text]
+    Recommended Time: [Hour in EST]
+
+    Use the following information to determine the Recommended Time:
     {recommended_time_prompt}
     """
+
 
     payload = {
         "model": "gpt-4o",

@@ -188,7 +188,7 @@ def schedule_post(post_ids, dont_use_until=90):
                         )
 
                 generated_output = generated_caption
-                # print(f"Generated caption: {generated_output}")
+                print(f"Generated caption: {generated_output}")
                 caption = generated_output.split("Recommended Time:")[0].strip()
 
                 hour = 12  # Default
@@ -208,7 +208,7 @@ def schedule_post(post_ids, dont_use_until=90):
                     update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)                           
                 else:
                     print("⚠️ Recommended time not found, using 12:00 PM default")
-                    st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+                    # st.warning("⚠️ Recommended time not found, using 12:00 PM default")
                     start_date = datetime.today().date()
                     post_date = start_date + timedelta(days=batch_num * interval_days)
                     selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
@@ -760,11 +760,10 @@ else:
                                 print("Error generating caption : ", e)
                             # print("Caption generated")
                             generated_output = st.session_state.generated_caption
-                            # print(generated_output)
+                            print(generated_output)
                             caption = generated_output.split("Recommended Time:")[0].strip()
 
                             # Step 5: Extract time (e.g. "6 PM")
-                            hour = 12  # Default
                             match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
                             if match:
                                 hour = int(match.group(1))
@@ -775,7 +774,8 @@ else:
                                 elif period == "AM" and hour == 12:
                                     hour = 0
                             else:
-                                st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+                                # st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+                                print("Recommended time not found")
 
                             # Step 6: Schedule post
                             if posting_status is False:

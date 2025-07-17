@@ -308,7 +308,7 @@ def delete_post(post_id):
 
 #Generate captions
 def generate_caption(image_path, image_name, engagement_data, used_hours=None, image_url=None):
-    # print(f"Used hours is : {used_hours}")
+    print(f"Used hours is : {used_hours}")
     # print("Generate caption function ", image_url)
     if used_hours is None:
         used_hours = set()

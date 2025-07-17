@@ -402,7 +402,7 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None, i
 
     Instructions:
     • Reference the image name `{image_name}` (without file extension if the name makes sense otherwise ignore it)
-    • Write a caption that reflects what’s visible or known about the photo
+    • Write a caption that reflects what’s visible or known about the "eyewear" (use the background for vibe only)
     • Avoid generic filler text or intros
     • Use no more than 200 characters total
     • Match the format and tone defined below
@@ -416,7 +416,7 @@ def generate_caption(image_path, image_name, engagement_data, used_hours=None, i
     No matter what ALWAYS use the following response format:
     Caption:
     Recommended Time:
-
+    Strict instructions to only resturn the above and nothing else, don't use any opening comments or lines. ONLY return the caption and Recommended time.
     Important:
     If you have value for avoid hours, choose a different recommended time.
     Use the following information to determine the recommended time:

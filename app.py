@@ -633,10 +633,14 @@ else:
         num_of_posts = st.number_input("Number of posts per interval", min_value=1, step=1, format="%d")
         frequency = st.selectbox("Post frequency", ["Daily", "Weekly", "Monthly"])
         dont_use_until = st.number_input(f"Do not use for next - Days", min_value=0, step=1, format="%d")
-        st.write(f"Don't use for the next {dont_use_until} days")
-        st.write(f"Number of posts: {num_of_posts}")
-        st.write(f"Frequency: {frequency}")
-        
+        summary_df = pd.DataFrame({
+            "Parameter": ["Don't use for (days)", "Number of posts", "Frequency"],
+            "Value": [dont_use_until, num_of_posts, frequency]
+        })
+
+        # Display as a styled table in Streamlit
+        st.table(summary_df)
+
         proceed = False  # Whether to proceed with scheduling
 
         #Generate engagement data

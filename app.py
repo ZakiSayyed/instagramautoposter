@@ -188,32 +188,35 @@ def schedule_post(post_ids, dont_use_until=90):
                         )
 
                 generated_output = generated_caption
-                print(f"Generated caption: {generated_output}")
                 caption = generated_output.split("Recommended Time:")[0].strip()
 
                 match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+
                 if match:
                     hour = int(match.group(1))
-                    used_hours.add(hour)
                     period = match.group(2).upper()
+
                     if period == "PM" and hour != 12:
                         hour += 12
                     elif period == "AM" and hour == 12:
                         hour = 0
+
+                    used_hours.add(hour)
                     start_date = datetime.today().date()
                     selected_time = datetime.combine(start_date, datetime.min.time()).replace(hour=hour, minute=0)
                     dontuseuntill = datetime.combine(start_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
-                    # print(dontuseuntill)
-                    update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)                           
+
                 else:
                     print("⚠️ Recommended time not found, using 12:00 PM default")
-                    # st.warning("⚠️ Recommended time not found, using 12:00 PM default")
-                    start_date = datetime.today().date()
-                    post_date = start_date + timedelta(days=batch_num * interval_days)
+                    hour = 12  # Default to 12 PM
+                    used_hours.add(hour)
+
+                    post_date = datetime.today().date() + timedelta(days=batch_num * interval_days)
                     selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
                     dontuseuntill = datetime.combine(post_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
-                    # print(dontuseuntill)
-                    update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)    
+
+                # Now safe to use selected_time and dontuseuntill in both branches
+                update_resuseable_posts(post_id, caption, selected_time, dontuseuntill)
 
             else:
                 print(f"❌ No post found with id: {post_id}")
@@ -307,8 +310,6 @@ def delete_post(post_id):
 
 #Generate captions
 def generate_caption(image_path, image_name, engagement_data, used_hours=None, image_url=None):
-    print(f"Used hours is : {used_hours}")
-    # print("Generate caption function ", image_url)
     if used_hours is None:
         used_hours = set()
 
@@ -559,21 +560,30 @@ def get_post_insights(media_id, access_token):
     response = requests.get(url, params=params)
     return response.json().get('data', [])
 
-from PIL import Image
 
 # Re-save uploaded image to ensure format compatibility
 def convert_image(input_path, output_format='jpg'):
     if output_format.lower() not in ['jpg', 'png']:
         raise ValueError("Output format must be 'jpg' or 'png'")
 
-    # Register HEIF plugin
     pillow_heif.register_heif_opener()
 
     image = Image.open(input_path)
+
+    # If saving as JPEG and image has alpha, convert it
+    if output_format.lower() == 'jpg' and image.mode in ('RGBA', 'LA'):
+        # Create white background and paste the image on it
+        background = Image.new("RGB", image.size, (255, 255, 255))
+        image = image.convert("RGBA")
+        background.paste(image, mask=image.split()[3])  # use alpha channel as mask
+        image = background
+    elif image.mode != 'RGB' and output_format.lower() == 'jpg':
+        image = image.convert("RGB")
+
     output_path = os.path.splitext(input_path)[0] + f".{output_format}"
     image_format = 'JPEG' if output_format.lower() == 'jpg' else 'PNG'
     image.save(output_path, format=image_format)
-    # print(f"Converted: {input_path} → {output_path}")
+    
     return output_path
 
 
@@ -718,6 +728,10 @@ else:
                     # print(f"Final image path: {final_image_path}")
                     # print(f"Image name: {image.name}")                              
                     img_name = image.name
+                except Exception as e:
+                    st.error(f"❌ Error processing image {image.name}: {e}")
+                
+                try:
                     if post_already_scheduled_check(image.name):
                         st.info(f"{img_name} - Post already used")
                     else:
@@ -728,10 +742,6 @@ else:
                             if not url:
                                 st.error(f"❌ Failed to upload image: {image.name}")
                                 continue
-                            # st.success(f"✅ Image uploaded: {image.name}")
-
-                            # Step 4: Generate caption if not cached
-                            # print("Generating caption")
                             try:
                                 if (
                                     "generated_caption" not in st.session_state
@@ -748,24 +758,27 @@ else:
                                     st.session_state.last_image = image.name
                             except Exception as e:
                                 print("Error generating caption : ", e)
-                            # print("Caption generated")
                             generated_output = st.session_state.generated_caption
-                            print(generated_output)
                             caption = generated_output.split("Recommended Time:")[0].strip()
 
-                            # Step 5: Extract time (e.g. "6 PM")
-                            match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
-                            if match:
-                                hour = int(match.group(1))
+                            try:
+                                match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+                                if match:
+                                    hour = int(match.group(1))
+                                    period = match.group(2).upper()
+                                    if period == "PM" and hour != 12:
+                                        hour += 12
+                                    elif period == "AM" and hour == 12:
+                                        hour = 0
+                                else:
+                                    hour = 12
+
                                 used_hours.add(hour)
-                                period = match.group(2).upper()
-                                if period == "PM" and hour != 12:
-                                    hour += 12
-                                elif period == "AM" and hour == 12:
-                                    hour = 0
-                            else:
-                                # st.warning("⚠️ Recommended time not found, using 12:00 PM default")
-                                print("Recommended time not found")
+
+                            except Exception as e:
+                                hour = 12
+                                used_hours.add(hour)
+                                st.error(f"Unexpected error while parsing time: {e}")
 
                             # Step 6: Schedule post
                             if posting_status is False:

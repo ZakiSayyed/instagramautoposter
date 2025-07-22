@@ -1,4 +1,4 @@
-#Prod
+#Testing
 from datetime import datetime, timedelta, date
 import time
 import streamlit as st
@@ -105,8 +105,58 @@ def build_post_insight_json():
 #______________________________________________________________________________________________________#
 #Database codes
 
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def update_posting_configs(num_of_posts, frequency, dont_use_until):
+    try:
+        updates = [
+            {"config_name": "num_of_posts", "config_value": str(num_of_posts)},
+            {"config_name": "frequency", "config_value": frequency},
+            {"config_name": "dontuseuntil", "config_value": str(dont_use_until)},
+        ]
+
+        for update in updates:
+            response = supabase.table("config") \
+                .update({"config_value": update["config_value"]}) \
+                .eq("config_name", update["config_name"]) \
+                .execute()
+
+            if response.data:
+                print(f"✅ Updated {update['config_name']} to {update['config_value']}")
+            else:
+                print(f"❌ Failed to update {update['config_name']} (no data returned)")
+
+    except Exception as e:
+        print(f"❌ Error updating configs: {e}")
+
+def fetch_posting_configs():
+    try:
+        config_keys = ["num_of_posts", "frequency", "dontuseuntil"]
+
+        response = supabase.table("config") \
+            .select("config_name, config_value") \
+            .in_("config_name", config_keys) \
+            .execute()
+
+        if not response.data:
+            print("❌ No config values found.")
+            return None
+
+        # Create a dictionary from the results
+        config_map = {item["config_name"]: item["config_value"] for item in response.data}
+
+        # Extract and return values with defaults if not found
+        num_of_posts = int(config_map.get("num_of_posts", 1))
+        frequency = config_map.get("frequency", "Daily")
+        dont_use_until = int(config_map.get("dontuseuntil", 0))
+
+        return num_of_posts, frequency, dont_use_until
+
+    except Exception as e:
+        print(f"❌ Error fetching configs: {e}")
+        return None
+
+
 def check_posts_with_dont_use_until_today():
     today = date.today()
     try:
@@ -581,10 +631,10 @@ def convert_image(input_path, output_format='jpg'):
     # print(f"Converted: {input_path} → {output_path}")
     return output_path
 
-check_posts_with_dont_use_until_today()
-post_id = check_reusable_posts()
-if post_id:
-    schedule_post(post_id)
+# check_posts_with_dont_use_until_today()
+# post_id = check_reusable_posts()
+# if post_id:
+#     schedule_post(post_id)
 
 st.set_page_config(page_title="Instagram Auto Poster")
 posting_status = False
@@ -627,163 +677,174 @@ else:
         num_of_posts = st.number_input("Number of posts per interval", min_value=1, step=1, format="%d")
         frequency = st.selectbox("Post frequency", ["Daily", "Weekly", "Monthly"])
         dont_use_until = st.number_input(f"Do not use for next - Days", min_value=0, step=1, format="%d")
-        st.write(f"Don't use for the next {dont_use_until} days")
-        st.write(f"Number of posts: {num_of_posts}")
-        st.write(f"Frequency: {frequency}")      
-        proceed = False  # Whether to proceed with scheduling
+        if st.button("Update Critera"):
+            update_posting_configs(str(num_of_posts), str(frequency), str(dont_use_until))
+            st.success("Configuration updated successfully!")
+            time.sleep(2)
+            st.rerun()
+        st.header("Current Critera")
+        configs = fetch_posting_configs()
+        dont_use_until1 = configs[2]
+        num_of_posts1 = configs[0]
+        frequency1 = configs[1]
+        st.write(f"Don't use for the next {dont_use_until1} days")
+        st.write(f"Number of posts: {num_of_posts1}")
+        st.write(f"Frequency: {frequency1}")      
 
-        engagement_data = build_post_insight_json()     
+        # proceed = False  # Whether to proceed with scheduling
 
-        if num_of_posts and frequency:
-            images = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png", "heic", "heif"], accept_multiple_files=True)
-            st.write(f"Number of images uploaded: {len(images) if images else 0}")
+        # engagement_data = build_post_insight_json()     
 
-            if images and num_of_posts:
+        # if num_of_posts and frequency:
+        #     images = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png", "heic", "heif"], accept_multiple_files=True)
+        #     st.write(f"Number of images uploaded: {len(images) if images else 0}")
+
+        #     if images and num_of_posts:
            
-                total_images = len(images)
-                full_batches = total_images // num_of_posts
-                remaining_images = total_images % num_of_posts
+        #         total_images = len(images)
+        #         full_batches = total_images // num_of_posts
+        #         remaining_images = total_images % num_of_posts
 
-                # st.info(f"You uploaded **{total_images} images**.")
-                st.write(f"That gives you **{full_batches} full batch(es)** of {num_of_posts} images.")
+        #         # st.info(f"You uploaded **{total_images} images**.")
+        #         st.write(f"That gives you **{full_batches} full batch(es)** of {num_of_posts} images.")
 
-                if remaining_images != 0:
-                    st.warning(f"You'll have **{remaining_images} leftover image(s)** which won’t fill a complete batch.")
+        #         if remaining_images != 0:
+        #             st.warning(f"You'll have **{remaining_images} leftover image(s)** which won’t fill a complete batch.")
 
-                    # user_choice = st.radio("Do you want to proceed with this?", ["Nothing selected", "Yes, proceed", "No, I'll upload more images"])
-                    user_choice = "Yes, proceed"
-                    if user_choice == "Yes, proceed":
-                        proceed = True
-                    else:
-                        st.stop()
-                else:
-                    proceed = True
+        #             # user_choice = st.radio("Do you want to proceed with this?", ["Nothing selected", "Yes, proceed", "No, I'll upload more images"])
+        #             user_choice = "Yes, proceed"
+        #             if user_choice == "Yes, proceed":
+        #                 proceed = True
+        #             else:
+        #                 st.stop()
+        #         else:
+        #             proceed = True
 
-                if proceed:
-                    # Generate the schedule
-                    interval_days = {"daily": 1, "weekly": 7, "monthly": 30}[frequency.lower()]
-                    start_date = datetime.today().date()
-                    index = 0
+        #         if proceed:
+        #             # Generate the schedule
+        #             interval_days = {"daily": 1, "weekly": 7, "monthly": 30}[frequency.lower()]
+        #             start_date = datetime.today().date()
+        #             index = 0
 
-                    image_schedule = []
-                    for batch_num in range(full_batches + (1 if remaining_images else 0)):
-                        batch_images = images[index: index + num_of_posts]
-                        index += num_of_posts
-                        post_date = start_date + timedelta(days=batch_num * interval_days)
-                        for img in batch_images:
-                            image_schedule.append((post_date, img))
+        #             image_schedule = []
+        #             for batch_num in range(full_batches + (1 if remaining_images else 0)):
+        #                 batch_images = images[index: index + num_of_posts]
+        #                 index += num_of_posts
+        #                 post_date = start_date + timedelta(days=batch_num * interval_days)
+        #                 for img in batch_images:
+        #                     image_schedule.append((post_date, img))
 
-                    if st.checkbox("Show posting schedule"):
-                        # Show schedule
-                        st.success("✅ Your posts will be scheduled as follows:")
+        #             if st.checkbox("Show posting schedule"):
+        #                 # Show schedule
+        #                 st.success("✅ Your posts will be scheduled as follows:")
 
-                        for scheduled_date, img_file in image_schedule:
-                            if isinstance(scheduled_date, str):
-                                scheduled_date = datetime.strptime(scheduled_date, "%Y-%m-%d")
+        #                 for scheduled_date, img_file in image_schedule:
+        #                     if isinstance(scheduled_date, str):
+        #                         scheduled_date = datetime.strptime(scheduled_date, "%Y-%m-%d")
 
-                            st.markdown(f"**{scheduled_date.strftime('%Y-%m-%d')}**")
-                            cols = st.columns(5)
-                            try:
-                                img = Image.open(img_file)
-                                img.thumbnail((150, 150))
-                                with cols[0]:
-                                    st.image(img, caption=img_file.name, use_container_width=True)
-                            except Exception as e:
-                                st.warning(f"Could not display image: {e}")
+        #                     st.markdown(f"**{scheduled_date.strftime('%Y-%m-%d')}**")
+        #                     cols = st.columns(5)
+        #                     try:
+        #                         img = Image.open(img_file)
+        #                         img.thumbnail((150, 150))
+        #                         with cols[0]:
+        #                             st.image(img, caption=img_file.name, use_container_width=True)
+        #                     except Exception as e:
+        #                         st.warning(f"Could not display image: {e}")
 
-        else:
-            st.warning("Please enter the number of posts and select a frequency before uploading images.")
-            images = None
-        caption = ""
-        converted_image_path = None
+        # else:
+        #     st.warning("Please enter the number of posts and select a frequency before uploading images.")
+        #     images = None
+        # caption = ""
+        # converted_image_path = None
 
-        used_hours = set()  # ✅ This ensures we track previously used times
-        if images:
-            for post_date, image in image_schedule:
+        # used_hours = set()  # ✅ This ensures we track previously used times
+        # if images:
+        #     for post_date, image in image_schedule:
 
-                try:
-                    # Step 1: Save uploaded image temporarily
-                    temp_input_path = os.path.join("temp", image.name)
-                    os.makedirs("temp", exist_ok=True)
-                    with open(temp_input_path, "wb") as f:
-                        f.write(image.getbuffer())
+        #         try:
+        #             # Step 1: Save uploaded image temporarily
+        #             temp_input_path = os.path.join("temp", image.name)
+        #             os.makedirs("temp", exist_ok=True)
+        #             with open(temp_input_path, "wb") as f:
+        #                 f.write(image.getbuffer())
 
-                    # Step 2: Convert image and save to uploads
-                    os.makedirs("uploads", exist_ok=True)
-                    converted_image_path = convert_image(temp_input_path, "jpg")
-                    final_image_path = os.path.join("uploads", os.path.basename(converted_image_path))
-                    if os.path.exists(final_image_path):
-                        os.remove(final_image_path)
-                    os.rename(converted_image_path, final_image_path)
+        #             # Step 2: Convert image and save to uploads
+        #             os.makedirs("uploads", exist_ok=True)
+        #             converted_image_path = convert_image(temp_input_path, "jpg")
+        #             final_image_path = os.path.join("uploads", os.path.basename(converted_image_path))
+        #             if os.path.exists(final_image_path):
+        #                 os.remove(final_image_path)
+        #             os.rename(converted_image_path, final_image_path)
                       
-                    img_name = image.name
-                    if post_already_scheduled_check(image.name):
-                        st.info(f"{img_name} - Post already used")
-                    else:
-                        with st.spinner("Uploading Image"):
-                            # Step 3: Upload to Cloudinary
-                            url = upload_to_cloudinary(final_image_path)
-                            print("URL is ", url)
-                            if not url:
-                                st.error(f"❌ Failed to upload image: {image.name}")
-                                continue
-                            # st.success(f"✅ Image uploaded: {image.name}")
+        #             img_name = image.name
+        #             if post_already_scheduled_check(image.name):
+        #                 st.info(f"{img_name} - Post already used")
+        #             else:
+        #                 with st.spinner("Uploading Image"):
+        #                     # Step 3: Upload to Cloudinary
+        #                     url = upload_to_cloudinary(final_image_path)
+        #                     print("URL is ", url)
+        #                     if not url:
+        #                         st.error(f"❌ Failed to upload image: {image.name}")
+        #                         continue
+        #                     # st.success(f"✅ Image uploaded: {image.name}")
 
-                            # Step 4: Generate caption if not cached
-                            print("Generating caption")
-                            try:
-                                if (
-                                    "generated_caption" not in st.session_state
-                                    or st.session_state.get("last_image") != image.name
-                                ):
-                                    # with st.spinner("Generating caption..."):
-                                    st.session_state.generated_caption = generate_caption(
-                                            final_image_path,
-                                            image.name,
-                                            engagement_data,
-                                            used_hours=used_hours,
-                                            image_url=url
-                                        )
-                                    st.session_state.last_image = image.name
-                            except Exception as e:
-                                print("Error generating caption : ", e)
-                            print("Caption generated")
-                            generated_output = st.session_state.generated_caption
-                            print(generated_output)
-                            caption = generated_output.split("Recommended Time:")[0].strip()
+        #                     # Step 4: Generate caption if not cached
+        #                     print("Generating caption")
+        #                     try:
+        #                         if (
+        #                             "generated_caption" not in st.session_state
+        #                             or st.session_state.get("last_image") != image.name
+        #                         ):
+        #                             # with st.spinner("Generating caption..."):
+        #                             st.session_state.generated_caption = generate_caption(
+        #                                     final_image_path,
+        #                                     image.name,
+        #                                     engagement_data,
+        #                                     used_hours=used_hours,
+        #                                     image_url=url
+        #                                 )
+        #                             st.session_state.last_image = image.name
+        #                     except Exception as e:
+        #                         print("Error generating caption : ", e)
+        #                     print("Caption generated")
+        #                     generated_output = st.session_state.generated_caption
+        #                     print(generated_output)
+        #                     caption = generated_output.split("Recommended Time:")[0].strip()
 
-                            # Step 5: Extract time (e.g. "6 PM")
-                            hour = 12  # Default
-                            match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
-                            if match:
-                                hour = int(match.group(1))
-                                used_hours.add(hour)
-                                period = match.group(2).upper()
-                                if period == "PM" and hour != 12:
-                                    hour += 12
-                                elif period == "AM" and hour == 12:
-                                    hour = 0
-                            else:
-                                st.warning("⚠️ Recommended time not found, using 12:00 PM default")
+        #                     # Step 5: Extract time (e.g. "6 PM")
+        #                     hour = 12  # Default
+        #                     match = re.search(r"(\d{1,2})\s*(AM|PM)", generated_output, re.IGNORECASE)
+        #                     if match:
+        #                         hour = int(match.group(1))
+        #                         used_hours.add(hour)
+        #                         period = match.group(2).upper()
+        #                         if period == "PM" and hour != 12:
+        #                             hour += 12
+        #                         elif period == "AM" and hour == 12:
+        #                             hour = 0
+        #                     else:
+        #                         st.warning("⚠️ Recommended time not found, using 12:00 PM default")
 
-                            # Step 6: Schedule post
-                            if posting_status is False:
-                                selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
-                                if post_already_scheduled(image.name, selected_time):
-                                    st.info(f"✅ Already scheduled: {image.name} on {selected_time}")
-                                else:
-                                    dontuseuntill = datetime.combine(post_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
-                                    print(dontuseuntill)
+        #                     # Step 6: Schedule post
+        #                     if posting_status is False:
+        #                         selected_time = datetime.combine(post_date, datetime.min.time()).replace(hour=hour, minute=0)
+        #                         if post_already_scheduled(image.name, selected_time):
+        #                             st.info(f"✅ Already scheduled: {image.name} on {selected_time}")
+        #                         else:
+        #                             dontuseuntill = datetime.combine(post_date + timedelta(days=dont_use_until), datetime.min.time()).replace(hour=hour, minute=0)
+        #                             print(dontuseuntill)
 
-                                    add_post(image.name, caption, selected_time, url, dontuseuntill)
-                                    # st.success(f"✅ Post scheduled successfully for {image.name}")
-                                    st.success(f"✅ Image uploaded: {image.name}")
+        #                             add_post(image.name, caption, selected_time, url, dontuseuntill)
+        #                             # st.success(f"✅ Post scheduled successfully for {image.name}")
+        #                             st.success(f"✅ Image uploaded: {image.name}")
 
-                            else:
-                                st.info("Post already scheduled.")
+        #                     else:
+        #                         st.info("Post already scheduled.")
 
-                except Exception as e:
-                    st.error(f"❌ Error processing image {image.name}: {e}")
+        #         except Exception as e:
+        #             st.error(f"❌ Error processing image {image.name}: {e}")
 
 
     elif menu == "Analytics":

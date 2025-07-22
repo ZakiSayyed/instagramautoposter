@@ -621,6 +621,7 @@ def convert_image(input_path, output_format='jpg'):
     if output_format.lower() not in ['jpg', 'png']:
         raise ValueError("Output format must be 'jpg' or 'png'")
 
+
     # Register HEIF plugin
     pillow_heif.register_heif_opener()
 
